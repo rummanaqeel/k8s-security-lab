@@ -1,0 +1,35 @@
+# kube-bench Summary - CIS Kubernetes Benchmark
+# Tool: kube-bench 0.8.0
+# Date: May 11, 2026
+# Cluster: K3s on AWS EC2 t2.medium, Ubuntu 22.04 LTS
+
+== Summary Total ==
+7 checks PASS
+61 checks FAIL
+56 checks WARN
+0 checks INFO
+Total: 124 checks
+
+== Summary Policies ==
+0 checks PASS
+0 checks FAIL
+30 checks WARN
+0 checks INFO
+
+== Notable FAIL Items ==
+
+[FAIL] 1.2.1  - Anonymous authentication not disabled on API server
+[FAIL] 1.2.2  - Token authentication file in use
+[FAIL] 1.2.6  - Insecure port configuration
+[FAIL] 1.2.21 - Audit logging not enabled
+[FAIL] 4.2.1  - Service account credentials automounted
+[FAIL] 5.2.1  - Pod Security admission controller not configured
+[FAIL] 5.2.2  - Privileged containers permitted
+
+== Context Note ==
+61 FAIL items is expected on a default K3s single-node lab cluster.
+K3s is a lightweight distribution that disables many controls by default.
+In production these would be addressed via hardened K3s config,
+audit policy files, and PodSecurity admission profiles.
+
+Full results available on request - file excluded from repo due to size.

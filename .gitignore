@@ -1,0 +1,26 @@
+# Keys and credentials - never commit
+*.pem
+*.ppk
+*.key
+*.crt
+*-secret.yaml
+*-credentials.yaml
+
+# Binaries and archives - not needed in repo
+kube-bench
+*.tar.gz
+*.tar.gz.1
+
+# kube-bench config directory - too many files, not needed
+cfg/
+
+# Full Falco log (use sample in scan-results instead)
+falco-alerts.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.bak
