@@ -16,7 +16,7 @@ A hands-on cloud security lab demonstrating Kubernetes security hardening, runti
 | Security Control | Finding |
 |---|---|
 | Falco Runtime Detection | 4 real alerts captured - 2 shell spawns in container + 2 sensitive file reads on /etc/shadow |
-| Container Image CVE Reduction | HIGH+CRITICAL CVEs dropped from 113 to 20 (82% reduction) updating nginx:1.14 to nginx:latest |
+| Container Image CVE Exposure | Trivy scan surfaced 113 HIGH+CRITICAL CVEs in the legacy `nginx:1.14` base image; establishing an image-currency standard cut that to 20 |
 | CRITICAL CVEs Specifically | Reduced from 31 to 2 (93.5% reduction) between image versions |
 | CIS Benchmark Audit | 7 PASS / 61 FAIL / 56 WARN across 124 checks - all FAIL items documented |
 | RBAC Enforcement | developer-user blocked from delete/create, read-only access confirmed |
@@ -35,17 +35,35 @@ A hands-on cloud security lab demonstrating Kubernetes security hardening, runti
 
 ## Architecture
 
-```
-AWS EC2 (t2.medium - Ubuntu 22.04 LTS - us-east-1)
-└── K3s Kubernetes Cluster
-    ├── Namespace: production
-    │   ├── nginx-app Deployment (nginx:latest)
-    │   ├── RBAC: developer-readonly Role + RoleBinding
-    │   ├── NetworkPolicy: default-deny-all (zero-trust baseline)
-    │   ├── NetworkPolicy: allow-nginx-ingress (port 80 only)
-    │   └── Secret: db-credentials
-    ├── Namespace: monitoring
-    └── Namespace: security-testing
+```mermaid
+flowchart TB
+    subgraph EC2["AWS EC2 · t2.medium · Ubuntu 22.04 LTS · us-east-1"]
+        subgraph K3S["K3s Kubernetes Cluster"]
+            subgraph PROD["namespace: production"]
+                APP["nginx-app Deployment<br/><i>nginx:latest</i>"]
+                SEC["Secret<br/><i>db-credentials</i>"]
+                RBAC["RBAC<br/><i>developer-readonly<br/>Role + RoleBinding</i>"]
+                NP1["NetworkPolicy<br/><b>default-deny-all</b>"]
+                NP2["NetworkPolicy<br/><i>allow-nginx-ingress :80</i>"]
+            end
+            MON["namespace: monitoring"]
+            TEST["namespace: security-testing"]
+        end
+        FALCO["Falco 0.43.1<br/><i>modern eBPF probe</i>"]
+        KB["kube-bench 0.8.0<br/><i>CIS audit</i>"]
+        TRIVY["Trivy<br/><i>image scanning</i>"]
+    end
+
+    NP1 -.->|"blocks all pod traffic"| APP
+    NP2 -->|"permits TCP/80 only"| APP
+    RBAC -.->|"read-only enforcement"| APP
+    FALCO ==>|"syscall monitoring"| PROD
+    KB -->|"124 controls"| K3S
+    TRIVY -->|"CVE scan pre-deploy"| APP
+
+    style NP1 fill:#c0392b,color:#fff
+    style FALCO fill:#27ae60,color:#fff
+    style APP fill:#2980b9,color:#fff
 ```
 
 ## Falco Runtime Security Alerts (Real Output - May 11, 2026)
@@ -70,7 +88,15 @@ Falco detected the following security events during simulated attack scenarios:
                  user=root | command=bash | parent=containerd-shim
 ```
 
-**SOC Relevance:** Shell spawns inside running containers are a critical IOC indicating potential container escape or attacker-controlled code execution. /etc/shadow access indicates credential harvesting. Both are Tier-1 SOC escalation triggers in real environments.
+### MITRE ATT&CK Mapping
+
+| Falco alert | Technique | Tactic |
+|---|---|---|
+| Shell spawned in container with attached terminal | [T1059.004](https://attack.mitre.org/techniques/T1059/004/) — Command and Scripting Interpreter: Unix Shell | Execution |
+| Sensitive file read on `/etc/shadow` | [T1003.008](https://attack.mitre.org/techniques/T1003/008/) — OS Credential Dumping: /etc/passwd and /etc/shadow | Credential Access |
+| Interactive shell in a running container | [T1610](https://attack.mitre.org/techniques/T1610/) — Deploy Container *(behaviour consistent with container escape attempts)* | Defense Evasion |
+
+**SOC relevance.** A shell spawning inside a running container is a high-fidelity IOC — a correctly built container image has no reason to run `bash` interactively in production. `/etc/shadow` access is unambiguous credential harvesting. Both are Tier-1 escalation triggers, and both were caught by runtime syscall monitoring rather than by scanning, which is the distinction between detecting an attack in progress and detecting a vulnerability that might be attacked.
 
 ## Container Image Vulnerability Comparison (Trivy)
 
@@ -113,6 +139,15 @@ Notable FAIL categories: anonymous authentication controls, audit logging config
 - **Image Scanning:** Trivy (Aqua Security)
 - **Benchmark:** kube-bench 0.8.0
 - **Frameworks:** CIS Kubernetes Benchmark, Kubernetes RBAC, NetworkPolicy, ISO 27001
+
+## What I'd Do Differently in Production
+
+- **`nginx:latest` is not a remediation.** Pinning to a floating tag makes the deployment non-reproducible and silently changes what runs on the next pull. The correct control is a pinned, digest-referenced image (`nginx@sha256:...`) rebuilt on a schedule through a pipeline, with Trivy gating the build — not a manual tag bump.
+- **Trivy belongs in CI, not on my terminal.** Scanning after deployment finds what already shipped. The scan should fail the pipeline before the image reaches a registry, with a documented severity threshold and an exception process.
+- **61 kube-bench FAILs would not be acceptable.** K3s deliberately diverges from the CIS Benchmark, so a portion of these are expected-and-justified rather than genuine gaps. A production audit needs each FAIL classified as *remediate*, *compensating control*, or *not applicable to this distribution* — a raw count is the starting point of the work, not the result.
+- **Falco needs somewhere to send alerts.** Alerts written to a local log file on the node die with the node. Production routes Falco through Falcosidekick to a SIEM or alerting pipeline, with tuned rules — the default ruleset is noisy enough to cause alert fatigue within a day.
+- **Kubernetes Secrets are only base64-encoded.** They are not encrypted at rest by default. Real deployments need encryption at rest with a KMS provider, or an external secret store such as AWS Secrets Manager or HashiCorp Vault with the CSI driver.
+- **Single-node K3s hides the hard parts.** Multi-node clusters introduce CNI policy enforcement differences, etcd security, control-plane hardening, and admission control at scale — none of which a one-node lab exercises.
 
 ## Repository Structure
 
