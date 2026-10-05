@@ -176,5 +176,5 @@ k8s-security-lab/
 
 **Muhammad Rumman Aqeel**
 - GitHub: [github.com/rummanaqeel](https://github.com/rummanaqeel)
-- LinkedIn: [linkedin.com/in/rumman-aqeel-336758376](https://linkedin.com/in/rumman-aqeel-336758376)
+- LinkedIn: [linkedin.com/in/rumman-aqeel](https://linkedin.com/in/rumman-aqeel)
 - Email: rummanaqeel8@gmail.com
